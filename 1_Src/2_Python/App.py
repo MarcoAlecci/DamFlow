@@ -1,0 +1,495 @@
+# Imports
+from collections import Counter
+from dotenv      import load_dotenv
+from typing      import Dict, Any
+import numpy     as np
+import subprocess
+import requests
+import psutil
+import random
+import json
+import time
+import re
+import os
+# Own Imports
+import Utils
+
+# Class representing an App under analysis,
+class App:
+
+	# App Info
+	sha256  = None
+	pkgName = None
+	classID = None
+
+	# Where the APK file is stored
+	apkPath = None
+
+	# Data Flows extracted
+	dataFlows = None
+
+	# Embeddings
+	embeddings = None
+
+	# Anomaly Detection Results
+	anomalyDetectionResults = None
+
+	# Init Method
+	def __init__(self, sha256, pkgName = None, classID = None):
+		self.sha256  = sha256
+		self.pkgName = pkgName
+		self.classID = classID
+
+		# Initialize the embeddings dictionary with the specified keys
+		self.embeddings = {
+			'gpt'       : None,
+			'codebert'  : None,
+			'sfr'       : None
+		}
+
+		# Init
+		self.anomalyDetectionResults = None
+
+	# Download APK File  from AndroZoo.
+	# path: where the APK file will be stored.
+	def downloadAPK(self, path):
+
+		# Max number of Retries for AndroZoo
+		MAX_RETRIES = 10
+
+		# Load AndroZoo API KEY
+		load_dotenv()
+
+		# Check if the Apk File already exist
+		if os.path.exists(path + '{}.apk'.format(self.sha256)):
+			print("--- 📤 APK file with SHA256 already exists.")
+			self.apkPath = path + '{}.apk'.format(self.sha256)
+			return
+
+		# Construct the URL for downloading the APK
+		apkUrl = "https://androzoo.uni.lu/api/download?apikey={}&sha256={}".format(os.getenv("ANDROZOO_API_KEY"), self.sha256)
+
+		retries = 0
+		while retries < MAX_RETRIES:
+			print("--- 🔄 Tentive N: {}".format(retries))
+			# Make a GET request to download the APK file
+			req = requests.get(apkUrl, allow_redirects=True)
+			
+			# Check for HTTP errors like 502 or 503
+			if req.status_code in [502, 503]:
+				print(f"--- ❌ Error: Received status code {req.status_code}. Retrying in 30 seconds...")
+				retries += 1
+				time.sleep(30)
+				continue
+			elif req.status_code != 200:
+				print(f"--- ❌ Error: Received unexpected status code {req.status_code}.")
+				return
+			else:
+				# Save the downloaded content to the specified file path
+				with open(path + '{}.apk'.format(self.sha256), "wb") as apkFile:
+					apkFile.write(req.content)
+
+				# Store the apkPath
+				self.apkPath = path + '{}.apk'.format(self.sha256)
+				print("--- 📤 APK file downloaded and saved to {}".format(self.apkPath))
+				return
+		
+		print(f"--- ❌ Error: Failed to download APK after {MAX_RETRIES} attempts.")
+
+	# Delete the APK file
+	def deleteAPK(self):
+		os.remove(self.apkPath)
+
+
+	# Extract Data Flow Pairs
+	# tmpPath           : where to temporaly store the results.
+	# javaExtractorPath : path to the .jar file of the extractor.
+	# androidPath       : path to Android Platforms
+	# direction         : direction of the taint analysis (forward or backward)
+	# sourcesApproach   : sources to be used (docflow or nosources)
+	# timeout           : timeout to be used for the analysis
+	def extractDataFlows(self, tmpPath, javaExtractorPath, androidPath, direction, sourcesApproach, fullPaths, timeout):
+		#1. Download the app
+		print("--- 📥 Downloading APK")
+		self.downloadAPK(tmpPath)
+
+		# 2. Java Extractor
+		self.launchJavaExtractor(javaExtractorPath, androidPath, direction, sourcesApproach, fullPaths)
+
+		# 3. Read Output files containing Results
+		self.loadJsonExtractionResults()
+
+		# 3b. Read Candidate Sources File
+		self.loadCandidateSources()
+			
+		#4. Delete everything
+		# Check if APK file exists before calling deleteAPK
+		if os.path.exists(self.apkPath):
+			self.deleteAPK()
+		# Check if JSONL file exists before calling deleteFile
+		if os.path.exists(self.apkPath.replace(".apk",".json")):
+			Utils.deleteFile(self.apkPath.replace(".apk",".json"))
+		# Check if JSONL file with candidate Sources exists before calling deleteFile
+		if os.path.exists(self.apkPath.replace(".apk","_candidateSources.json")):
+			Utils.deleteFile(self.apkPath.replace(".apk","_candidateSources.json"))
+
+	# Launch Java Extractor
+	def launchJavaExtractor(self, javaExtractorPath, androidPath, direction, sourcesApproach, fullPaths, timeout = 1):
+		# Java Extractor
+		# System.out.println("Usage: -a <APK_PATH> -p <ANDROID_PATH> -s <true|false> -d <forward|backward> -sources <marco|susi> -fullPaths <true|false>");
+		command = 'java -Xmx24g -Xss1g -jar {} -a {} -p {} -s true -d {} -sources {} -fullPaths {}'.format(javaExtractorPath, self.apkPath, androidPath, direction, sourcesApproach, fullPaths)
+		print("--- 💻 Executing: {}".format(command))
+	
+		process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	
+		if timeout > 0:
+			print("--- ⏲️ Timeout: {} s\n".format(timeout))
+
+			try:
+				output, error = process.communicate(timeout=timeout)  # Set the timeout
+
+				print("\n+++ START of Logging/Error +++")
+				print(error.decode("utf-8"))		
+				print("+++ END of Logging/Error +++\n")
+				
+				# Check return code
+				returnCode = process.returncode
+				if returnCode == 0:
+					print("\n+++ START of Output +++")
+					print(output.decode("utf-8"))
+					print("+++ END of Output +++\n")
+				else:
+					print("\n+++ START of Logging/Error +++")
+					if error is not None:
+						print(error.decode("utf-8"))
+					else:
+						print("No error output captured.")
+					print("+++ END of Logging/Error +++\n")
+			except subprocess.TimeoutExpired:
+				print("--- ⚠️ Timeout Reached.")
+				process.kill()
+				raise TimeoutError("Timeout reached while executing the command.")
+			
+		else:
+			print("--- ⏲️ NO TIMEOUT")
+			output, error = process.communicate()
+
+			# Check return code
+			returnCode = process.returncode
+			if returnCode == 0:
+				print("\n+++ START of Output +++")
+				print(output.decode("utf-8"))
+				print("+++ END of Output +++\n")
+			else:
+				print("\n+++ START of Logging/Error +++")
+				if error is not None:
+					print(error.decode("utf-8"))
+				else:
+					print("No error output captured.")
+				print("+++ END of Logging/Error +++\n")      
+
+	# Read Results
+	def loadJsonExtractionResults(self):
+		resultsPath = self.apkPath.replace(".apk", ".json")
+
+		if not os.path.exists(resultsPath):
+			print("--- ⚠️ Results file not available.\n")
+			raise FileNotFoundError("Results file '{}' not found.".format(resultsPath))
+
+		with open(resultsPath, 'r') as file:
+			data = json.load(file)  # Read the whole JSON file
+			sources = data.get('sources', [])
+			sinks = data.get('sinks', [])
+			pairs = data.get('pairs', [])
+			paths = data.get('paths', [])
+
+			self.dataFlows = DataFlows(sources, sinks, pairs, paths)
+
+	# Read Results
+	def loadCandidateSources(self):
+		resultsPath = self.apkPath.replace(".apk","_candidateSources.json")
+
+		if not os.path.exists(resultsPath):
+			print("--- ⚠️ Candidate Sources file not available.\n")
+		else:
+			with open(resultsPath, 'r') as file:
+				data = json.load(file)
+				candidateSources = dict()
+				candidateSources["sha256"] = self.sha256
+				candidateSources.update(data)
+
+				self.candidateSources = candidateSources
+
+	### REDIS ### 
+	# To a JSON String
+	def toJsonString(self):
+		# Convert object attributes to a dictionary
+		jsonDict = {
+			"sha256"    : self.sha256,
+			"pkgName"   : self.pkgName,
+			"classID"   : self.classID,
+			"dataFlows" : self.dataFlows.getAll() if self.dataFlows is not None else None,
+			"embeddings": self.embeddings
+		}
+		# Serialize dictionary to JSON string
+		return json.dumps(jsonDict)
+
+	# Download DataFlows From Redis
+	def downloadDataFlowsFromRedis(self, redisClient, forTraining=False, forTesting=False):
+
+		def printMemoryUsage():
+			process = psutil.Process(os.getpid())
+			mem_info = process.memory_info()
+			total_mem = psutil.virtual_memory().total
+			percent_usage = (mem_info.rss / total_mem) * 100
+			print(f"--- 💾 Memory Usage: {mem_info.rss / 1024 ** 2:.2f} MB [{percent_usage:.2f}% of total]", flush=True)
+
+		# Download Extraction Results
+		resultJsonData = redisClient.downloadJsonData(redisClient.resultsKey, self.sha256)
+
+		if resultJsonData is not None:
+			print("--- ✅ Data Flows Availaible on Redis", flush=True)
+
+			# Print memory usage
+			printMemoryUsage()
+
+			# Training Mode
+			if forTraining:
+				print("--- ⚙️ Load from Redis [TRAINING MODE]", flush=True)
+				# Randomly sample 10k pairs
+				pairs = resultJsonData.get("pairs", [])
+				sampledPairs = random.sample(pairs, min(1000, len(pairs)))
+				
+				self.dataFlows = DataFlows(resultJsonData.get("sources", []),
+										resultJsonData.get("sinks", []),
+										sampledPairs, 
+										resultJsonData.get("paths", []))
+				
+				print("--- ⚙️ Data Flows Pairs Sampled: {} --> {}".format(len(pairs), len(sampledPairs)))
+			
+			# Testing Mode
+			elif forTesting:
+				print("--- ⚙️ Load from Redis [TESTING MODE]", flush=True)
+				# No Duplicates
+				pairs = resultJsonData.get("pairs", [])
+				uniquePairs = list({json.dumps(pair) for pair in pairs})
+				uniquePairs = [json.loads(pair) for pair in uniquePairs]
+
+				self.dataFlows = DataFlows(resultJsonData.get("sources", []),
+										   resultJsonData.get("sinks", []),
+										   uniquePairs,
+										   resultJsonData.get("paths", []))
+				print("--- ⚙️ Data Flows Pairs Unique : {} --> {}".format(len(pairs), len(uniquePairs)))
+
+			# General
+			else:
+				self.dataFlows = DataFlows(resultJsonData.get("sources", []),
+										resultJsonData.get("sinks", []),
+										resultJsonData.get("pairs", []), 
+										resultJsonData.get("paths", []))
+				
+				print("--- ⚙️ Data Flows Pairs : {}".format(len(resultJsonData.get("pairs", []))))
+
+		else:
+			print("--- ❌ Data Flows Unavailaible on Redis", flush=True)
+
+	# Download Embeddings from Redis for each pair of the Data Flows Object.
+	def downloadPairsEmbeddingsFromRedis(self, redisClient, embeddingModel):
+
+		# Check if the Embedding Model is one of the supported types
+		if embeddingModel not in ["gpt", "codebert", "sfr"]:
+			print("--- ⚠️ Error: Unsupported embeddingModel type. Please use 'gpt', 'codebert', or 'sfr'.")
+			return
+
+		embeddingModelRedisKey = redisClient.projectKey + "." + embeddingModel
+
+		# If there are no DataFlow s...
+		if self.dataFlows is None:
+			print("--- ⚠️ Data Flows not present.\n")
+			return
+		else:
+			# To store all the embeddings
+			pairEmbeddings = []
+
+			# For each Data Flow Pair
+			for pair in self.dataFlows.pairs:
+				# Get Source and Sink Embeddings
+				source = pair['source']
+				srcEmbString = redisClient.downloadString(embeddingModelRedisKey, source)
+				if srcEmbString is None:
+					print("--- ⚠️ Embedding not present on Redis Server.")
+					return
+				srcEmb = np.array([float(x) for x in srcEmbString.split(',')])
+			
+				sink = pair['sink']
+				sinkEmbString = redisClient.downloadString(embeddingModelRedisKey, sink)
+				if sinkEmbString is None:
+					print("--- ⚠️ Embedding not present on Redis Server.")
+					return
+				sinkEmb = np.array([float(x) for x in sinkEmbString.split(',')])
+			
+				# Concatenate Source and Sink
+				pairEmb = np.concatenate((srcEmb, sinkEmb))
+				
+				# Add to Embedding list
+				pairEmbeddings.append(pairEmb)
+
+			self.embeddings[embeddingModel] = np.array(pairEmbeddings)
+
+		print("--- ✅ PAIRS Embeddings Loaded From Redis --> {}".format(embeddingModel), flush=True)
+
+	# Download Embeddings from Redis for each pair of the Data Flows Object.
+	def downloadSourcesEmbeddingsFromRedis(self, redisClient, embeddingModel):
+
+		# Check if the Embedding Model is one of the supported types
+		if embeddingModel not in ["gpt", "codebert", "sfr"]:
+			print("--- ⚠️ Error: Unsupported embeddingModel type. Please use 'gpt', 'codebert', or 'sfr'.")
+			return
+
+		embeddingModelRedisKey = redisClient.projectKey + "." + embeddingModel
+
+		# If there are no DataFlow s...
+		if self.dataFlows is None:
+			print("--- ⚠️ Data Flows not present.\n")
+			return
+		else:
+			# To store all the embeddings
+			sourceEmbeddings = []
+
+			# For each Data Flow Pair
+			for pair in self.dataFlows.pairs:
+				# Get Source Embedding
+				source = pair['source']
+				srcEmbString = redisClient.downloadString(embeddingModelRedisKey, source)
+				if srcEmbString is None:
+					print("--- ⚠️ Embedding not present on Redis Server.")
+					return
+				srcEmb = np.array([float(x) for x in srcEmbString.split(',')])
+				
+				sourceEmbeddings.append(srcEmb)
+
+			self.embeddings[embeddingModel] = np.array(sourceEmbeddings)
+
+		print("--- ✅ SOURCE Embeddings Loaded From Redis --> {}".format(embeddingModel), flush=True)
+
+# Class to manage DataFlows extracted from an App
+class DataFlows:
+
+	# Fields after Data Flows Extraction
+	sources = []
+	sinks   = []
+	pairs   = []
+	paths   = []
+
+	def __init__(self, sources=[], sinks=[], pairs=[], paths=[]):
+		self.sources = sources
+		self.sinks = sinks
+		self.pairs = pairs
+		self.paths = paths
+
+	def __str__(self) -> str:
+		print("\n--- ⭐ Summary ⭐ ---")
+		print(f"--- #️⃣ Number of sources  : {len(self.sources)}")
+		print(f"--- #️⃣ Number of sinks    : {len(self.sinks)}")
+		DataFlows.printDataFlowsPairsListStats(self.pairs)
+		return ""
+
+	@staticmethod
+	def printDataFlowPair(dataFlowPair: Dict[str, Any]) -> str:
+		print("------ 🔻 Source: {}\n------ 🔺 Sink  : {}".format(dataFlowPair.get('source'), dataFlowPair.get('sink')))
+
+	@staticmethod
+	def printDataFlowsPairsListStats(pairs):
+		# Convert dictionaries to tuples
+		dataFlowsPairsList = [tuple(sorted(d.items())) if isinstance(d, dict) else d for d in pairs]
+
+		# Count occurrences of each element
+		elementCounts = Counter(dataFlowsPairsList)
+
+		# Find the top 5 most frequent elements
+		top5 = elementCounts.most_common(5)
+
+		# Count the number of distinct elements
+		numDistinctElements = len(elementCounts)
+
+		print(f"--- #️⃣ Number of data flows pairs           : {len(dataFlowsPairsList)}")
+		print(f"--- #️⃣ Number of Distinct data flows pairs  : {numDistinctElements}")
+		print("--- #️⃣ Top 5 most frequent data flows pairs :")
+		for element, count in top5:
+			print(f"\n--- ⭕ {count} Times")
+			DataFlows.printDataFlowPair(dict(element))
+
+		print("-"*30 + "\n")
+
+	# Get Dictionary (JSON LIKE)
+	def getAll(self):
+		return {
+			'sources': self.sources,
+			'sinks': self.sinks,
+			'pairs': self.pairs,
+			'paths': self.paths
+		}
+	
+	# Convert to JSON String
+	def toJsonString(self):
+		return json.dumps(self.getAll())
+	
+	# Method to get the CSV Stats
+	def toCSVStats(self):
+		# Get the total count of sources and pairs
+		numSources = len(self.sources)
+		numPairs   = len(self.pairs)
+		
+		# Convert each pair dictionary to a JSON string
+		pairs_as_json = [json.dumps(pair, sort_keys=True) for pair in self.pairs]
+		
+		# Get the count of distinct sources and pairs
+		numDistinctSources = len(set(self.sources))
+		numDistinctPairs   = len(set(pairs_as_json))
+		
+		# Return all the counts
+		return numSources, numPairs, numDistinctSources, numDistinctPairs  
+
+	# Check if all lists are empty
+	def isEmpty(self):
+
+		# Check if all lists are empty
+		if (len(self.sources) == 0   and
+			len(self.sinks)   == 0   and
+			len(self.pairs)   == 0   and
+			len(self.paths)   == 0):
+
+			print("--- ⚠️ Empty Data Flows")
+			return True
+		else:
+			return False
+		
+	@staticmethod
+	def extractSignature(line):
+		# Define the regex pattern to match and extract return type and method signature
+		pattern = r'<.*?: (.*?)\s(.*?)>'
+		match = re.search(pattern, line)
+		
+		if match:
+			return_type = match.group(1)  # Extract return type
+			signature = match.group(2)    # Extract method signature
+			return f"{return_type} {signature}"  # Return formatted string
+		else:
+			return None
+	
+	# Keep only the signatue (paths is not affected)
+	def keepOnlySignatures(self):
+		print("--- ⚙️ Keeping only signatures ")
+
+		# Update sources with signatures
+		for i in range(len(self.sources)):
+			self.sources[i] = self.extractSignature(self.sources[i])
+
+		# Update sinks with signatures
+		for i in range(len(self.sinks)):
+			self.sinks[i] = self.extractSignature(self.sinks[i])
+
+		# Update pairs with signatures
+		for pair in self.pairs:
+			pair['source'] = self.extractSignature(pair['source'])
+			pair['sink']   = self.extractSignature(pair['sink'])
