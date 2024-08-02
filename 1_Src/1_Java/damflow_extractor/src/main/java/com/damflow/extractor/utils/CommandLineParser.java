@@ -33,10 +33,10 @@ public class CommandLineParser {
         System.out.println(String.format("⚡ Starting DataFlowExtractor at %s ⚡\n", formattedDateTime));
 
         // Save command line options
-        this.APK_PATH = args[1];
-        this.ANDROID_PATH = args[3];
-        this.DIRECTION = args[5];
-        this.SOURCES_APPROACH = args[7];
+        this.APK_PATH           = args[1];
+        this.ANDROID_PATH       = args[3];
+        this.DIRECTION          = args[5];
+        this.SOURCES_APPROACH   = args[7];
 
         return true;
     }
