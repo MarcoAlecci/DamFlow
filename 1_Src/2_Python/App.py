@@ -17,7 +17,7 @@ class App:
 	# App Info
 	sha256  = None
 	pkgName = None
-	classID = None
+	categoryID = None
 
 	# Where the APK file is stored
 	apkPath = None
@@ -32,10 +32,10 @@ class App:
 	anomalyDetectionResults = None
 
 	# Init Method
-	def __init__(self, sha256, pkgName = None, classID = None):
+	def __init__(self, sha256, pkgName = None, categoryID = None):
 		self.sha256  = sha256
 		self.pkgName = pkgName
-		self.classID = classID
+		self.categoryID = categoryID
 
 		# Initialize the embeddings dictionary with the specified keys
 		self.embeddings = {
@@ -181,7 +181,7 @@ class App:
 		jsonDict = {
 			"sha256"    : self.sha256,
 			"pkgName"   : self.pkgName,
-			"classID"   : self.classID,
+			"categoryID"   : self.categoryID,
 			"dataFlows" : self.dataFlows.getAll() if self.dataFlows is not None else None,
 			"embeddings": self.embeddings
 		}
