@@ -189,7 +189,7 @@ class App:
 		return json.dumps(jsonDict)
 
 	# Download DataFlows From Redis
-	def downloadDataFlowsFromRedis(self, redisClient, forTraining=False, forTesting=False):
+	def downloadDataFlowsFromRedis(self, redisClient):
 
 		def printMemoryUsage():
 			process = psutil.Process(os.getpid())
@@ -207,42 +207,12 @@ class App:
 			# Print memory usage
 			printMemoryUsage()
 
-			# Training Mode
-			if forTraining:
-				print("--- ⚙️ Load from Redis [TRAINING MODE]", flush=True)
-				# Randomly sample 10k pairs
-				pairs = resultJsonData.get("pairs", [])
-				sampledPairs = random.sample(pairs, min(1000, len(pairs)))
-				
-				self.dataFlows = DataFlows(resultJsonData.get("sources", []),
-										resultJsonData.get("sinks", []),
-										sampledPairs, 
-										resultJsonData.get("paths", []))
-				
-				print("--- ⚙️ Data Flows Pairs Sampled: {} --> {}".format(len(pairs), len(sampledPairs)))
-			
-			# Testing Mode
-			elif forTesting:
-				print("--- ⚙️ Load from Redis [TESTING MODE]", flush=True)
-				# No Duplicates
-				pairs = resultJsonData.get("pairs", [])
-				uniquePairs = list({json.dumps(pair) for pair in pairs})
-				uniquePairs = [json.loads(pair) for pair in uniquePairs]
-
-				self.dataFlows = DataFlows(resultJsonData.get("sources", []),
-										   resultJsonData.get("sinks", []),
-										   uniquePairs,
-										   resultJsonData.get("paths", []))
-				print("--- ⚙️ Data Flows Pairs Unique : {} --> {}".format(len(pairs), len(uniquePairs)))
-
-			# General
-			else:
-				self.dataFlows = DataFlows(resultJsonData.get("sources", []),
+			self.dataFlows = DataFlows(resultJsonData.get("sources", []),
 										resultJsonData.get("sinks", []),
 										resultJsonData.get("pairs", []), 
-										resultJsonData.get("paths", []))
+										)
 				
-				print("--- ⚙️ Data Flows Pairs : {}".format(len(resultJsonData.get("pairs", []))))
+			print("--- ⚙️ Data Flows Pairs : {}".format(len(resultJsonData.get("pairs", []))))
 
 		else:
 			print("--- ❌ Data Flows Unavailaible on Redis", flush=True)
@@ -292,39 +262,6 @@ class App:
 
 		print("--- ✅ PAIRS Embeddings Loaded From Redis --> {}".format(embeddingModel), flush=True)
 
-	# Download Embeddings from Redis for each pair of the Data Flows Object.
-	def downloadSourcesEmbeddingsFromRedis(self, redisClient, embeddingModel):
-
-		# Check if the Embedding Model is one of the supported types
-		if embeddingModel not in ["gpt", "codebert", "sfr"]:
-			print("--- ⚠️ Error: Unsupported embeddingModel type. Please use 'gpt', 'codebert', or 'sfr'.")
-			return
-
-		embeddingModelRedisKey = redisClient.projectKey + "." + embeddingModel
-
-		# If there are no DataFlow s...
-		if self.dataFlows is None:
-			print("--- ⚠️ Data Flows not present.\n")
-			return
-		else:
-			# To store all the embeddings
-			sourceEmbeddings = []
-
-			# For each Data Flow Pair
-			for pair in self.dataFlows.pairs:
-				# Get Source Embedding
-				source = pair['source']
-				srcEmbString = redisClient.downloadString(embeddingModelRedisKey, source)
-				if srcEmbString is None:
-					print("--- ⚠️ Embedding not present on Redis Server.")
-					return
-				srcEmb = np.array([float(x) for x in srcEmbString.split(',')])
-				
-				sourceEmbeddings.append(srcEmb)
-
-			self.embeddings[embeddingModel] = np.array(sourceEmbeddings)
-
-		print("--- ✅ SOURCE Embeddings Loaded From Redis --> {}".format(embeddingModel), flush=True)
 
 # Class to manage DataFlows extracted from an App
 class DataFlows:
