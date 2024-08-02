@@ -66,7 +66,7 @@ public class Main {
         } 
         // Error
         else {
-            System.out.println("--- ⚠️  Warning: Use -docflow- or -nsources- approach.");
+            System.out.println("--- ⚠️  Warning: Use -docflow- or -nosources- approach.");
             System.exit(1);
         }
         System.out.println("--- 🔻 Number of Sources: " + SourcesSinksManager.sources.size());

@@ -1,7 +1,5 @@
 # Imports
-from collections import Counter
 from dotenv      import load_dotenv
-from typing      import Dict, Any
 import numpy     as np
 import subprocess
 import requests
@@ -9,7 +7,6 @@ import psutil
 import random
 import json
 import time
-import re
 import os
 # Own Imports
 import Utils
@@ -98,6 +95,7 @@ class App:
 
 	# Delete the APK file
 	def deleteAPK(self):
+		print("--- 🗑️ Delete APK")
 		os.remove(self.apkPath)
 
 
@@ -108,20 +106,17 @@ class App:
 	# direction         : direction of the taint analysis (forward or backward)
 	# sourcesApproach   : sources to be used (docflow or nosources)
 	# timeout           : timeout to be used for the analysis
-	def extractDataFlows(self, tmpPath, javaExtractorPath, androidPath, direction, sourcesApproach, fullPaths, timeout):
+	def extractDataFlows(self, tmpPath, javaExtractorPath, androidPath, direction, sourcesApproach, timeout):
 		#1. Download the app
 		print("--- 📥 Downloading APK")
 		self.downloadAPK(tmpPath)
 
 		# 2. Java Extractor
-		self.launchJavaExtractor(javaExtractorPath, androidPath, direction, sourcesApproach, fullPaths)
+		self.launchJavaExtractor(javaExtractorPath, androidPath, direction, sourcesApproach, timeout)
 
 		# 3. Read Output files containing Results
 		self.loadJsonExtractionResults()
 
-		# 3b. Read Candidate Sources File
-		self.loadCandidateSources()
-			
 		#4. Delete everything
 		# Check if APK file exists before calling deleteAPK
 		if os.path.exists(self.apkPath):
@@ -129,51 +124,19 @@ class App:
 		# Check if JSONL file exists before calling deleteFile
 		if os.path.exists(self.apkPath.replace(".apk",".json")):
 			Utils.deleteFile(self.apkPath.replace(".apk",".json"))
-		# Check if JSONL file with candidate Sources exists before calling deleteFile
-		if os.path.exists(self.apkPath.replace(".apk","_candidateSources.json")):
-			Utils.deleteFile(self.apkPath.replace(".apk","_candidateSources.json"))
 
 	# Launch Java Extractor
-	def launchJavaExtractor(self, javaExtractorPath, androidPath, direction, sourcesApproach, fullPaths, timeout = 1):
+	def launchJavaExtractor(self, javaExtractorPath, androidPath, direction, sourcesApproach, timeout = 1):
 		# Java Extractor
-		# System.out.println("Usage: -a <APK_PATH> -p <ANDROID_PATH> -s <true|false> -d <forward|backward> -sources <marco|susi> -fullPaths <true|false>");
-		command = 'java -Xmx24g -Xss1g -jar {} -a {} -p {} -s true -d {} -sources {} -fullPaths {}'.format(javaExtractorPath, self.apkPath, androidPath, direction, sourcesApproach, fullPaths)
+		command = 'java -Xmx24g -Xss1g -jar {} -a {} -p {} -d {} -s {} '.format(javaExtractorPath, self.apkPath, androidPath, direction, sourcesApproach)
 		print("--- 💻 Executing: {}".format(command))
 	
 		process = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-	
-		if timeout > 0:
-			print("--- ⏲️ Timeout: {} s\n".format(timeout))
 
-			try:
-				output, error = process.communicate(timeout=timeout)  # Set the timeout
-
-				print("\n+++ START of Logging/Error +++")
-				print(error.decode("utf-8"))		
-				print("+++ END of Logging/Error +++\n")
-				
-				# Check return code
-				returnCode = process.returncode
-				if returnCode == 0:
-					print("\n+++ START of Output +++")
-					print(output.decode("utf-8"))
-					print("+++ END of Output +++\n")
-				else:
-					print("\n+++ START of Logging/Error +++")
-					if error is not None:
-						print(error.decode("utf-8"))
-					else:
-						print("No error output captured.")
-					print("+++ END of Logging/Error +++\n")
-			except subprocess.TimeoutExpired:
-				print("--- ⚠️ Timeout Reached.")
-				process.kill()
-				raise TimeoutError("Timeout reached while executing the command.")
+		print("--- ⏲️ Timeout: {} s\n".format(timeout))
+		try:
+			output, error = process.communicate(timeout=timeout)
 			
-		else:
-			print("--- ⏲️ NO TIMEOUT")
-			output, error = process.communicate()
-
 			# Check return code
 			returnCode = process.returncode
 			if returnCode == 0:
@@ -181,12 +144,18 @@ class App:
 				print(output.decode("utf-8"))
 				print("+++ END of Output +++\n")
 			else:
-				print("\n+++ START of Logging/Error +++")
 				if error is not None:
+					print("\n+++ START of Logging/Error +++")
 					print(error.decode("utf-8"))
+					print("+++ END of Logging/Error +++\n")
 				else:
 					print("No error output captured.")
-				print("+++ END of Logging/Error +++\n")      
+		except subprocess.TimeoutExpired:
+			print("--- ⚠️ Timeout Reached.")
+			if os.path.exists(self.apkPath):
+				self.deleteAPK()
+			process.kill()
+			raise TimeoutError("Timeout reached while executing the command.")
 
 	# Read Results
 	def loadJsonExtractionResults(self):
@@ -201,24 +170,9 @@ class App:
 			sources = data.get('sources', [])
 			sinks = data.get('sinks', [])
 			pairs = data.get('pairs', [])
-			paths = data.get('paths', [])
 
-			self.dataFlows = DataFlows(sources, sinks, pairs, paths)
+			self.dataFlows = DataFlows(sources, sinks, pairs)
 
-	# Read Results
-	def loadCandidateSources(self):
-		resultsPath = self.apkPath.replace(".apk","_candidateSources.json")
-
-		if not os.path.exists(resultsPath):
-			print("--- ⚠️ Candidate Sources file not available.\n")
-		else:
-			with open(resultsPath, 'r') as file:
-				data = json.load(file)
-				candidateSources = dict()
-				candidateSources["sha256"] = self.sha256
-				candidateSources.update(data)
-
-				self.candidateSources = candidateSources
 
 	### REDIS ### 
 	# To a JSON String
@@ -379,117 +333,35 @@ class DataFlows:
 	sources = []
 	sinks   = []
 	pairs   = []
-	paths   = []
 
-	def __init__(self, sources=[], sinks=[], pairs=[], paths=[]):
+	def __init__(self, sources=[], sinks=[], pairs=[]):
 		self.sources = sources
 		self.sinks = sinks
 		self.pairs = pairs
-		self.paths = paths
 
 	def __str__(self) -> str:
 		print("\n--- ⭐ Summary ⭐ ---")
-		print(f"--- #️⃣ Number of sources  : {len(self.sources)}")
-		print(f"--- #️⃣ Number of sinks    : {len(self.sinks)}")
-		DataFlows.printDataFlowsPairsListStats(self.pairs)
+		print(f"--- #️⃣ Number of sources          : {len(self.sources)}")
+		print(f"--- #️⃣ Number of sinks            : {len(self.sinks)}")
+		print(f"--- #️⃣ Number of data flows pairs : {len(self.pairs)}")
 		return ""
 
-	@staticmethod
-	def printDataFlowPair(dataFlowPair: Dict[str, Any]) -> str:
-		print("------ 🔻 Source: {}\n------ 🔺 Sink  : {}".format(dataFlowPair.get('source'), dataFlowPair.get('sink')))
-
-	@staticmethod
-	def printDataFlowsPairsListStats(pairs):
-		# Convert dictionaries to tuples
-		dataFlowsPairsList = [tuple(sorted(d.items())) if isinstance(d, dict) else d for d in pairs]
-
-		# Count occurrences of each element
-		elementCounts = Counter(dataFlowsPairsList)
-
-		# Find the top 5 most frequent elements
-		top5 = elementCounts.most_common(5)
-
-		# Count the number of distinct elements
-		numDistinctElements = len(elementCounts)
-
-		print(f"--- #️⃣ Number of data flows pairs           : {len(dataFlowsPairsList)}")
-		print(f"--- #️⃣ Number of Distinct data flows pairs  : {numDistinctElements}")
-		print("--- #️⃣ Top 5 most frequent data flows pairs :")
-		for element, count in top5:
-			print(f"\n--- ⭕ {count} Times")
-			DataFlows.printDataFlowPair(dict(element))
-
-		print("-"*30 + "\n")
-
-	# Get Dictionary (JSON LIKE)
+	# Get Dictionary
 	def getAll(self):
 		return {
 			'sources': self.sources,
 			'sinks': self.sinks,
 			'pairs': self.pairs,
-			'paths': self.paths
 		}
 	
 	# Convert to JSON String
 	def toJsonString(self):
 		return json.dumps(self.getAll())
 	
-	# Method to get the CSV Stats
-	def toCSVStats(self):
-		# Get the total count of sources and pairs
-		numSources = len(self.sources)
-		numPairs   = len(self.pairs)
-		
-		# Convert each pair dictionary to a JSON string
-		pairs_as_json = [json.dumps(pair, sort_keys=True) for pair in self.pairs]
-		
-		# Get the count of distinct sources and pairs
-		numDistinctSources = len(set(self.sources))
-		numDistinctPairs   = len(set(pairs_as_json))
-		
-		# Return all the counts
-		return numSources, numPairs, numDistinctSources, numDistinctPairs  
-
 	# Check if all lists are empty
 	def isEmpty(self):
-
-		# Check if all lists are empty
-		if (len(self.sources) == 0   and
-			len(self.sinks)   == 0   and
-			len(self.pairs)   == 0   and
-			len(self.paths)   == 0):
-
+		if (len(self.sources) == 0 and (self.sinks) == 0 and len(self.pairs) == 0):
 			print("--- ⚠️ Empty Data Flows")
 			return True
 		else:
 			return False
-		
-	@staticmethod
-	def extractSignature(line):
-		# Define the regex pattern to match and extract return type and method signature
-		pattern = r'<.*?: (.*?)\s(.*?)>'
-		match = re.search(pattern, line)
-		
-		if match:
-			return_type = match.group(1)  # Extract return type
-			signature = match.group(2)    # Extract method signature
-			return f"{return_type} {signature}"  # Return formatted string
-		else:
-			return None
-	
-	# Keep only the signatue (paths is not affected)
-	def keepOnlySignatures(self):
-		print("--- ⚙️ Keeping only signatures ")
-
-		# Update sources with signatures
-		for i in range(len(self.sources)):
-			self.sources[i] = self.extractSignature(self.sources[i])
-
-		# Update sinks with signatures
-		for i in range(len(self.sinks)):
-			self.sinks[i] = self.extractSignature(self.sinks[i])
-
-		# Update pairs with signatures
-		for pair in self.pairs:
-			pair['source'] = self.extractSignature(pair['source'])
-			pair['sink']   = self.extractSignature(pair['sink'])

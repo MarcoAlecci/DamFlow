@@ -1,0 +1,5 @@
+com/damflow/extractor/utils/CommandLineParser.class
+com/damflow/extractor/Main.class
+com/damflow/extractor/utils/Filter.class
+com/damflow/extractor/utils/ResultsManager.class
+com/damflow/extractor/utils/SourcesSinksManager.class
