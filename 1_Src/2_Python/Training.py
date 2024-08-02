@@ -25,7 +25,7 @@ class TrainingManager:
 	trainingResults = None
 
 	# Initializer
-	def __init__(self, embeddingModel, embeddingSchema, dataToEmbed):
+	def __init__(self, embeddingModel):
 
 		# Check if the Embedding Model is one of the supported types
 		if embeddingModel not in ["gpt", "codebert", "sfr"]:
@@ -74,7 +74,7 @@ class TrainingManager:
 		# Print message if no embeddings
 		if len(X) == 0:
 			print("\n--- ⚠️ Error: Embeddings Not Loaded")
-			return
+			raise FileNotFoundError("--- ⚠️ Error:  Embeddings Not Loaded")
 
 		# Start
 		startTime = time.time()

@@ -25,7 +25,9 @@ To execute the entire code, two API keys are required. They should be set in an 
 
 - 🗝️ **ANDROZOO_API_KEY**: This key is necessary to download apps from the *AndroZoo* Repository, as various operations on the APK files are performed "on-the-fly," such as app download, extraction, and deletion. It can be requested here: [https://androzoo.uni.lu/access](https://androzoo.uni.lu/access)
 
-- 🗝️ **OPENAI_API_KEY**: This key is required to utilize the Embedding models from OpenAI through their official API ([https://platform.openai.com/overview](https://platform.openai.com/overview)).
+- 🗝️ **OPENAI_API_KEY**: This key is required to utilize the Embedding models from OpenAI through their official API ([https://platform.openai.com/overview](https://platform.openai.com/overview)).  
+(⚠️ Please note that there are costs associated with using these embedding models ⚠️)
+
 
 ##### 🖥️ Redis Server
 As the temporary data and results are too large to be stored locally, our system uses an external Redis server for efficient data processing and to avoid the overhead of storing large amounts of data locally.
@@ -72,4 +74,4 @@ You also need to choose whether to analyze **AndroCatSet** or the dataset of mal
 
 Additionally, you can specify your own key for REDIS by setting the parameter `REDIS_PREFIX` in every notebook.
 
-**Important:** Ensure these values are consistent across all notebooks for the full pipeline to work properly.
+**⚠️ Important:** Ensure these values are consistent across all notebooks for the full pipeline to work properly.
