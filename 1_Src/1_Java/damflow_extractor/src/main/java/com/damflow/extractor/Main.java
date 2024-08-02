@@ -48,11 +48,7 @@ public class Main {
         // 4. Get Methods + Filtering 
         // Get ALl Methods
         Set<SootMethod> appMethods = su.getAllMethods();
-        System.out.println("\n--- #️⃣  Num Methods                  --> " + appMethods.size());
         appMethods = Filter.filterNonSystemLibraries(appMethods);
-        appMethods = Filter.filterInitMethods(appMethods);
-        appMethods = Filter.filterVoidMethods(appMethods);
- 
 
         // 5. Loading Sources and sinks
         System.out.println("\n--- 🌊 Flow Analysis --- 🌊");

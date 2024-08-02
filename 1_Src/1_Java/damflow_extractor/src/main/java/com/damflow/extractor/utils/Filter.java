@@ -49,37 +49,8 @@ public class Filter {
                 iterator.remove();
             }
         }
-        System.out.println("--- #️⃣  Filter: Non-System Library Methods (NEW) --> " + appMethods.size());
+        //System.out.println("--- #️⃣  Filter: Non-System Library Methods (NEW) --> " + appMethods.size());
         return appMethods;
     }
-
-    // Filter out all init methods
-    public static Set<SootMethod> filterInitMethods(Set<SootMethod> appMethods) {
-        Iterator<SootMethod> iterator = appMethods.iterator();
-        while (iterator.hasNext()) {
-            SootMethod method = iterator.next();
-            if (method.getName().contains("<init>") || method.getName().contains("<clinit>")) {
-                iterator.remove();
-            }
-        }
-        System.out.println("--- #️⃣  Filter: Init Methods         --> " + appMethods.size());
-        return appMethods;
-    }
-
-    // Filter out all void methods
-    public static Set<SootMethod> filterVoidMethods(Set<SootMethod> appMethods) {
-        Pattern pattern = Pattern.compile("\\svoid\\s");
-        Iterator<SootMethod> iterator = appMethods.iterator();
-        while (iterator.hasNext()) {
-            SootMethod method = iterator.next();
-            Matcher matcher = pattern.matcher(method.getSignature());
-            if (matcher.find()) {
-                iterator.remove();
-            }
-        }
-        System.out.println("--- #️⃣  Filter: Void Methods         --> " + appMethods.size());
-        return appMethods;
-    }
-
 }
     
