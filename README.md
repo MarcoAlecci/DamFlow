@@ -9,10 +9,13 @@ In this repository, we host all the data and code related to our paper titled **
 The repository is organized into several key directories, each serving a specific purpose:
 
 * **📁 0_Data**  
-  Contains all the datasets used in the experiments. This includes a smaller version of AndroCatSet called **AndroCatSet Mini**, which can be used to test the code easily.
+
+  This directory contains all datasets used in the experiments.
+
+  For the sole purpose of testing, we include a smaller dataset, **AndroCatSet_Mini**, which allows you to test the code. The full version of **AndroCatSet** is needed to replicate the paper's results but requires more time, resources, as well as higher costs for using OpenAI Embeddings (see requirements).
 
 * **📂 1_Src**  
-  Houses all the source code, divided into two subfolders: one for **Java** and one for **Python**.
+  Contains all the source code, divided into two subfolders: one for **Java** and one for **Python**.
   * **Java Folder**  
     Contains the code needed to launch FlowDroid (for both backward analysis and the baseline approach). A `.jar` file is also provided for convenience.
   * **Python Folder**  
@@ -42,6 +45,34 @@ You must configure your own Redis server and specify the connection details in t
 ##### 🟩 Android Platforms:
 In order to use DamFlow (as it is based on FlowDroid) you need to add to the .env file also the path to the Android Platforms.
 * ANDROID_PATH = [path_to_android_platform]
+
+##### 🐍 Conda Environment
+
+To launch all the Jupyter Notebooks, you will need various libraries. We provide a **requirements.txt** file which you can use to create a conda environment.
+
+Follow the steps below:
+
+1. **Create a conda environment named `damFlowEnv`:**
+
+    ```bash
+    conda create --name damFlowEnv python=3.8
+    ```
+
+2. **Activate the newly created environment:**
+
+    ```bash
+    conda activate damFlowEnv
+    ```
+
+3. **Install the required packages using `pip` and `requirements.txt`:**
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+Once these steps are complete, your environment will be set up with all the necessary libraries.
+
+
 
 ### ⚙️ Usage
 
