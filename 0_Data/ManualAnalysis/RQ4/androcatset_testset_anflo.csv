@@ -1,0 +1,7 @@
+pkgName,Source,Sink,SourcePermission,SinkPermission
+ios.caller.screen.dialer,<android.app.Activity: android.content.Intent getIntent()>,<android.app.Activity: void startActivity(android.content.Intent)>,POSSIBLE_IPC,POSSIBLE_IPC
+com.openxchange.mobile.oxmail,<android.app.Activity: android.content.Intent getIntent()>,<android.app.Activity: void startActivity(android.content.Intent)>,POSSIBLE_IPC,POSSIBLE_IPC
+com.microsoft.outlooklite,<android.net.ConnectivityManager: boolean isActiveNetworkMetered()>,"<android.content.Context: android.content.Intent registerReceiver(android.content.BroadcastReceiver,android.content.IntentFilter)>",android.permission.ACCESS_NETWORK_STATE,POSSIBLE_IPC
+ma.safe.bnuk,<android.app.Activity: android.content.Intent getIntent()>,<android.app.Activity: void startActivity(android.content.Intent)>,POSSIBLE_IPC,POSSIBLE_IPC
+com.hbo.hbonow,<android.app.DownloadManager: long enqueue(android.app.DownloadManager$Request)>,"<android.content.Context: android.content.Intent registerReceiver(android.content.BroadcastReceiver,android.content.IntentFilter)>",android.permission.WRITE_EXTERNAL_STORAGE,POSSIBLE_IPC
+com.wiseplay,"<android.media.RingtoneManager: android.media.Ringtone getRingtone(android.content.Context,android.net.Uri)>",<android.media.Ringtone: void setStreamType(int)>,android.permission.WAKE_LOCK,android.permission.WAKE_LOCK
