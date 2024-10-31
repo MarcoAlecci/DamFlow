@@ -101,6 +101,10 @@ In the **Extraction Notebook**, you need to specify which approach to use for ex
   `DIRECTION = "forward"`  
   `SOURCE_APPROACH = "docflow"`
 
+* **SUSI**  
+  `DIRECTION = "forward"`  
+  `SOURCE_APPROACH = "susi"`
+
 You also need to choose whether to analyze **AndroCatSet** or the dataset of malicious apps we created.
 
 Additionally, you can specify your own key for REDIS by setting the parameter `REDIS_PREFIX` in every notebook.
